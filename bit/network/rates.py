@@ -115,7 +115,7 @@ class BitpayRates:
     @classmethod
     def currency_to_cryptocurrency(cls, currency, cryptocurrency):
         headers = {"x-accept-version": "2.0.0", "Accept": "application/json"}
-        r = requests.get(cls.RATES.format(currency, cryptocurrency), headers=headers)
+        r = requests.get(cls.RATES.format(cryptocurrency, currency), headers=headers)
         r.raise_for_status()
         rate = r.json()['data']['rate']
         return ONE / Decimal(rate)
@@ -123,7 +123,7 @@ class BitpayRates:
     @classmethod
     def cryptocurrency_to_currency(cls, currency, cryptocurrency):
         headers = {"x-accept-version": "2.0.0", "Accept": "application/json"}
-        r = requests.get(cls.RATES.format(currency, cryptocurrency), headers=headers)
+        r = requests.get(cls.RATES.format(cryptocurrency, currency), headers=headers)
         r.raise_for_status()
         rate = r.json()['data']['rate']
         return Decimal(rate)
@@ -340,22 +340,22 @@ class RatesAPI:
     CRYPTOCURRENCY_TO_CURRENCY = [BitpayRates.cryptocurrency_to_currency]
 
     @classmethod
-    def currency_to_cryptocurrency(cls):  # pragma: no cover
+    def currency_to_cryptocurrency(cls, currency, cryptocurrency):  # pragma: no cover
 
         for api_call in cls.CURRENCY_TO_CRYPTOCURRENCY:
             try:
-                return api_call()
+                return api_call(currency, cryptocurrency)
             except cls.IGNORED_ERRORS:
                 pass
 
         raise ConnectionError('All APIs are unreachable.')
 
     @classmethod
-    def cryptocurrency_to_currency(cls):  # pragma: no cover
+    def cryptocurrency_to_currency(cls, currency, cryptocurrency):  # pragma: no cover
 
         for api_call in cls.CRYPTOCURRENCY_TO_CURRENCY:
             try:
-                return api_call()
+                return api_call(currency, cryptocurrency)
             except cls.IGNORED_ERRORS:
                 pass
 
@@ -648,8 +648,8 @@ def currency_to_cryptocurrency(amount, currency, cryptocurrency):
     :type currency: ``str``
     :rtype: ``int``
     """
-    rate = EXCHANGE_RATES['currency_to_cryptocurrency']()
-    return rate(currency, cryptocurrency) * Decimal(amount)
+    rate = EXCHANGE_RATES['currency_to_cryptocurrency'](currency, cryptocurrency)
+    return rate * Decimal(amount)
 
 
 def cryptocurrency_to_currency(amount, currency, cryptocurrency):
@@ -662,8 +662,8 @@ def cryptocurrency_to_currency(amount, currency, cryptocurrency):
     :type currency: ``str``
     :rtype: ``int``
     """
-    rate = EXCHANGE_RATES['cryptocurrency_to_currency']()
-    return rate(currency, cryptocurrency) * Decimal(amount)
+    rate = EXCHANGE_RATES['cryptocurrency_to_currency'](currency, cryptocurrency)
+    return rate * Decimal(amount)
 
 
 class CachedRate:
