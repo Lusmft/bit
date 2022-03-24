@@ -1,6 +1,9 @@
 from collections import OrderedDict
+from datetime import timedelta
 from decimal import ROUND_DOWN
 from functools import wraps
+from pycoingecko import CoinGeckoAPI
+from redis import Redis
 from time import time
 
 import requests
@@ -13,6 +16,10 @@ DEFAULT_CACHE_TIME = 60
 # Constant for use in deriving exchange
 # rates when given in terms of 1 BTC.
 ONE = Decimal(1)
+
+redis = Redis(db=1)
+
+cg = CoinGeckoAPI()
 
 SUPPORTED_CURRENCIES = OrderedDict(
     [
@@ -93,6 +100,29 @@ def mbtc_to_satoshi():
 
 def btc_to_satoshi():
     return BTC
+
+
+class CoinGeckoRates:
+    """
+    API Documentation:
+    https://github.com/man-c/pycoingecko
+    """
+
+    ids = {
+        'btc': 'bitcoin',
+        'eth': 'ethereum',
+        'ltc': 'litecoin',
+    }
+
+    @classmethod
+    def currency_to_cryptocurrency(cls, currency, cryptocurrency):
+        cryptocurrency = cls.ids[cryptocurrency]
+        return ONE / Decimal(cg.get_price(ids=cryptocurrency, vs_currencies=currency)[cryptocurrency][currency])
+
+    @classmethod
+    def cryptocurrency_to_currency(cls, currency, cryptocurrency):
+        cryptocurrency = cls.ids[cryptocurrency]
+        return Decimal(cg.get_price(ids=cryptocurrency, vs_currencies=currency)[cryptocurrency][currency])
 
 
 class BitpayRates:
@@ -336,8 +366,14 @@ class RatesAPI:
     SGD_RATES = [BitpayRates.sgd_to_satoshi, BlockchainRates.sgd_to_satoshi]
     THB_RATES = [BitpayRates.thb_to_satoshi, BlockchainRates.thb_to_satoshi]
     TWD_RATES = [BitpayRates.twd_to_satoshi, BlockchainRates.twd_to_satoshi]
-    CURRENCY_TO_CRYPTOCURRENCY = [BitpayRates.currency_to_cryptocurrency]
-    CRYPTOCURRENCY_TO_CURRENCY = [BitpayRates.cryptocurrency_to_currency]
+    CURRENCY_TO_CRYPTOCURRENCY = [
+        CoinGeckoRates.currency_to_cryptocurrency,
+        BitpayRates.currency_to_cryptocurrency,
+    ]
+    CRYPTOCURRENCY_TO_CURRENCY = [
+        CoinGeckoRates.cryptocurrency_to_currency,
+        BitpayRates.cryptocurrency_to_currency,
+    ]
 
     @classmethod
     def currency_to_cryptocurrency(cls, currency, cryptocurrency):  # pragma: no cover
@@ -694,9 +730,34 @@ def currency_to_satoshi_local_cache(f):
     return wrapper
 
 
+def cryptocurrency_to_currency_local_cache(f):
+
+    @wraps(f)
+    def wrapper(amount, currency, cryptocurrency):
+
+        cached_rate = redis.get(f'{cryptocurrency}-to-{currency}')
+
+        if not cached_rate:
+            cached_rate = EXCHANGE_RATES['cryptocurrency_to_currency'](currency, cryptocurrency)
+            redis.setex(f'{cryptocurrency}-to-{currency}', 60, cached_rate)
+
+        return cached_rate * Decimal(amount)
+
+    return wrapper
+
+
 @currency_to_satoshi_local_cache
 def currency_to_satoshi_local_cached():
     pass  # pragma: no cover
+
+
+@cryptocurrency_to_currency_local_cache
+def cryptocurrency_to_currency_local_cached():
+    pass  # pragma: no cover
+
+
+def cryptocurrency_to_currency_cached(amount, currency, cryptocurrency):
+    return cryptocurrency_to_currency_local_cached(amount, currency, cryptocurrency)
 
 
 def currency_to_satoshi_cached(amount, currency):
