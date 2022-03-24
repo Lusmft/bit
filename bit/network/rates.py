@@ -121,6 +121,14 @@ class BitpayRates:
         return ONE / Decimal(rate)
 
     @classmethod
+    def cryptocurrency_to_currency(cls, currency, cryptocurrency):
+        headers = {"x-accept-version": "2.0.0", "Accept": "application/json"}
+        r = requests.get(cls.RATES.format(currency, cryptocurrency), headers=headers)
+        r.raise_for_status()
+        rate = r.json()['data']['rate']
+        return Decimal(rate)
+
+    @classmethod
     def usd_to_satoshi(cls):  # pragma: no cover
         return cls.currency_to_satoshi('usd')
 
@@ -329,11 +337,23 @@ class RatesAPI:
     THB_RATES = [BitpayRates.thb_to_satoshi, BlockchainRates.thb_to_satoshi]
     TWD_RATES = [BitpayRates.twd_to_satoshi, BlockchainRates.twd_to_satoshi]
     CURRENCY_TO_CRYPTOCURRENCY = [BitpayRates.currency_to_cryptocurrency]
+    CRYPTOCURRENCY_TO_CURRENCY = [BitpayRates.cryptocurrency_to_currency]
 
     @classmethod
     def currency_to_cryptocurrency(cls):  # pragma: no cover
 
         for api_call in cls.CURRENCY_TO_CRYPTOCURRENCY:
+            try:
+                return api_call()
+            except cls.IGNORED_ERRORS:
+                pass
+
+        raise ConnectionError('All APIs are unreachable.')
+
+    @classmethod
+    def cryptocurrency_to_currency(cls):  # pragma: no cover
+
+        for api_call in cls.CRYPTOCURRENCY_TO_CURRENCY:
             try:
                 return api_call()
             except cls.IGNORED_ERRORS:
@@ -600,6 +620,7 @@ EXCHANGE_RATES = {
     'twd': RatesAPI.twd_to_satoshi,
     'clp': RatesAPI.clp_to_satoshi,
     'currency_to_cryptocurrency': RatesAPI.currency_to_cryptocurrency,
+    'cryptocurrency_to_currency': RatesAPI.cryptocurrency_to_currency,
 }
 
 
@@ -627,8 +648,22 @@ def currency_to_cryptocurrency(amount, currency, cryptocurrency):
     :type currency: ``str``
     :rtype: ``int``
     """
-    rate = EXCHANGE_RATES['currency_to_cryptocurrency'](currency, cryptocurrency)
-    return rate * Decimal(amount)
+    rate = EXCHANGE_RATES['currency_to_cryptocurrency']()
+    return rate(currency, cryptocurrency) * Decimal(amount)
+
+
+def cryptocurrency_to_currency(amount, currency, cryptocurrency):
+    """Converts a given amount of currency to the equivalent number of
+    satoshi. The amount can be either an int, float, or string as long as
+    it is a valid input to :py:class:`decimal.Decimal`.
+
+    :param amount: The quantity of currency.
+    :param currency: One of the :ref:`supported currencies`.
+    :type currency: ``str``
+    :rtype: ``int``
+    """
+    rate = EXCHANGE_RATES['cryptocurrency_to_currency']()
+    return rate(currency, cryptocurrency) * Decimal(amount)
 
 
 class CachedRate:
