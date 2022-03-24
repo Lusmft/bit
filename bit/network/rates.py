@@ -102,6 +102,7 @@ class BitpayRates:
     """
 
     SINGLE_RATE = 'https://bitpay.com/rates/BTC/'
+    RATES = 'https://bitpay.com/rates/{}/{}'
 
     @classmethod
     def currency_to_satoshi(cls, currency):
@@ -110,6 +111,14 @@ class BitpayRates:
         r.raise_for_status()
         rate = r.json()['data']['rate']
         return int(ONE / Decimal(rate) * BTC)
+
+    @classmethod
+    def currency_to_cryptocurrency(cls, currency, cryptocurrency):
+        headers = {"x-accept-version": "2.0.0", "Accept": "application/json"}
+        r = requests.get(cls.RATES.format(currency, cryptocurrency), headers=headers)
+        r.raise_for_status()
+        rate = r.json()['data']['rate']
+        return ONE / Decimal(rate)
 
     @classmethod
     def usd_to_satoshi(cls):  # pragma: no cover
@@ -319,6 +328,18 @@ class RatesAPI:
     SGD_RATES = [BitpayRates.sgd_to_satoshi, BlockchainRates.sgd_to_satoshi]
     THB_RATES = [BitpayRates.thb_to_satoshi, BlockchainRates.thb_to_satoshi]
     TWD_RATES = [BitpayRates.twd_to_satoshi, BlockchainRates.twd_to_satoshi]
+    CURRENCY_TO_CRYPTOCURRENCY = [BitpayRates.currency_to_cryptocurrency]
+
+    @classmethod
+    def currency_to_cryptocurrency(cls):  # pragma: no cover
+
+        for api_call in cls.CURRENCY_TO_CRYPTOCURRENCY:
+            try:
+                return api_call()
+            except cls.IGNORED_ERRORS:
+                pass
+
+        raise ConnectionError('All APIs are unreachable.')
 
     @classmethod
     def usd_to_satoshi(cls):  # pragma: no cover
@@ -578,6 +599,7 @@ EXCHANGE_RATES = {
     'thb': RatesAPI.thb_to_satoshi,
     'twd': RatesAPI.twd_to_satoshi,
     'clp': RatesAPI.clp_to_satoshi,
+    'currency_to_cryptocurrency': RatesAPI.currency_to_cryptocurrency,
 }
 
 
@@ -593,6 +615,20 @@ def currency_to_satoshi(amount, currency):
     """
     satoshis = EXCHANGE_RATES[currency]()
     return int(satoshis * Decimal(amount))
+
+
+def currency_to_cryptocurrency(amount, currency, cryptocurrency):
+    """Converts a given amount of currency to the equivalent number of
+    satoshi. The amount can be either an int, float, or string as long as
+    it is a valid input to :py:class:`decimal.Decimal`.
+
+    :param amount: The quantity of currency.
+    :param currency: One of the :ref:`supported currencies`.
+    :type currency: ``str``
+    :rtype: ``int``
+    """
+    rate = EXCHANGE_RATES['currency_to_cryptocurrency'](currency, cryptocurrency)
+    return rate * Decimal(amount)
 
 
 class CachedRate:
